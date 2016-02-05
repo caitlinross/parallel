@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
         g_x_cell_size = atoi(argv[1]);
         g_y_cell_size = atoi(argv[1]);
         g_num_ticks = atoi(argv[2]);
-        g_threshold = atoi(argv[3]);
+        g_threshold = atoi(argv[3])*.01;
     }
     else
         perror("Expects 3 arguments! size, num_ticks, and threshold");
@@ -149,14 +149,29 @@ int count_alive_neighbors(int i, int j)
     // TODO needs to interact with diagonal neighbors as well
     // count alive neighbors
     int total_alive = 0;
-    if (g_GOL_CELL[(i+1) % g_x_cell_size][j] == ALIVE)
+    int i_r = (i+1) % g_x_cell_size;
+    int i_l = g_x_cell_size + ((i-1) % g_x_cell_size);
+    int j_d = (j+1) % g_y_cell_size;
+    int j_u = g_y_cell_size + ((j-1) % g_y_cell_size);
+    if (g_GOL_CELL[i_r][j] == ALIVE)
         total_alive++;
-    if (g_GOL_CELL[g_x_cell_size + ((i-1) % g_x_cell_size)][j] == ALIVE)
+    if (g_GOL_CELL[i_l][j] == ALIVE)
         total_alive++;
-    if (g_GOL_CELL[i][(j+1) % g_y_cell_size] == ALIVE)
+    if (g_GOL_CELL[i][j_d] == ALIVE)
         total_alive++;
-    if (g_GOL_CELL[i][g_y_cell_size + ((j-1) % g_y_cell_size)] == ALIVE)
+    if (g_GOL_CELL[i][j_u] == ALIVE)
         total_alive++;
+
+    // diagonal neighbors
+    if (g_GOL_CELL[i_r][j_d] == ALIVE)
+        total_alive++;
+    if (g_GOL_CELL[i_l][j_u] == ALIVE)
+        total_alive++;
+    if (g_GOL_CELL[i_r][j_d] == ALIVE)
+        total_alive++;
+    if (g_GOL_CELL[i_l][j_u] == ALIVE)
+        total_alive++;
+
     return total_alive;
 }
 
