@@ -41,7 +41,9 @@ double g_threshold=0.0;
 void allocate_and_init_cells();
 void compute_one_tick();
 void output_final_cell_state();
+void apply_gol_rules(int i, int j);
 int count_alive_neighbors(int i, int j);
+int mod (int a, int b);
 
 /***************************************************************************/
 /* Function: Main **********************************************************/
@@ -68,8 +70,6 @@ int main(int argc, char *argv[])
         perror("Expects 3 arguments! size, num_ticks, and threshold");
 
     allocate_and_init_cells();
-    output_final_cell_state();
-    printf("\n\n");
 
     for(i = 0; i < g_num_ticks; i++)
     {
@@ -124,57 +124,13 @@ void compute_one_tick()
             {
                 // random number greater than given threshold
                 // use normal GOL rules
-                int total_alive = count_alive_neighbors(i, j);
-                if (g_GOL_CELL[i][j] == ALIVE)
-                {
-                    if (total_alive < 2)
-                        g_GOL_CELL[i][j] = DEAD;
-                    else if (total_alive > 3)
-                        g_GOL_CELL[i][j] = DEAD;
-                }
-                else // dead
-                {
-                    if (total_alive == 3)
-                        g_GOL_CELL[i][j] = ALIVE;
-                }
+                apply_gol_rules(i, j);
             }
             else // otherwise choose a random state
                 g_GOL_CELL[i][j] = (drand48() > .5) ? ALIVE : DEAD;
         }
     }
 }
-
-int count_alive_neighbors(int i, int j)
-{
-    // TODO needs to interact with diagonal neighbors as well
-    // count alive neighbors
-    int total_alive = 0;
-    int i_r = (i+1) % g_x_cell_size;
-    int i_l = g_x_cell_size + ((i-1) % g_x_cell_size);
-    int j_d = (j+1) % g_y_cell_size;
-    int j_u = g_y_cell_size + ((j-1) % g_y_cell_size);
-    if (g_GOL_CELL[i_r][j] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i_l][j] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i][j_d] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i][j_u] == ALIVE)
-        total_alive++;
-
-    // diagonal neighbors
-    if (g_GOL_CELL[i_r][j_d] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i_l][j_u] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i_r][j_d] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i_l][j_u] == ALIVE)
-        total_alive++;
-
-    return total_alive;
-}
-
 
 /***************************************************************************/
 /* Function: output_final_cell_state ***************************************/
@@ -196,4 +152,63 @@ void output_final_cell_state()
                 printf("%d,", g_GOL_CELL[i][j]);
         }
     }
+}
+
+/***************************************************************************/
+/* Helper Functions ********************************************************/
+/***************************************************************************/
+
+void apply_gol_rules(int i, int j)
+{
+    int total_alive = count_alive_neighbors(i, j);
+    if (g_GOL_CELL[i][j] == ALIVE)
+    {
+        if (total_alive < 2)
+            g_GOL_CELL[i][j] = DEAD;
+        else if (total_alive > 3)
+            g_GOL_CELL[i][j] = DEAD;
+    }
+    else // dead
+    {
+        if (total_alive == 3)
+            g_GOL_CELL[i][j] = ALIVE;
+    }
+}
+
+int count_alive_neighbors(int i, int j)
+{
+    // count alive neighbors
+    int total_alive = 0;
+    int i_u = mod(i+1, (int)g_x_cell_size);
+    int i_d = mod(i-1, (int)g_x_cell_size);
+    int j_r = mod(j+1, (int)g_y_cell_size);
+    int j_l = mod(j-1, (int)g_y_cell_size);
+    if (g_GOL_CELL[i_u][j] == ALIVE)
+        total_alive++;
+    if (g_GOL_CELL[i_d][j] == ALIVE)
+        total_alive++;
+    if (g_GOL_CELL[i][j_r] == ALIVE)
+        total_alive++;
+    if (g_GOL_CELL[i][j_l] == ALIVE)
+        total_alive++;
+
+    // diagonal neighbors
+    if (g_GOL_CELL[i_u][j_l] == ALIVE)
+        total_alive++;
+    if (g_GOL_CELL[i_d][j_r] == ALIVE)
+        total_alive++;
+    if (g_GOL_CELL[i_u][j_r] == ALIVE)
+        total_alive++;
+    if (g_GOL_CELL[i_d][j_l] == ALIVE)
+        total_alive++;
+
+    return total_alive;
+}
+
+int mod (int a, int b)
+{
+    int ret = a % b;
+    if(ret < 0)
+        ret+=b;
+    return ret;
 }
