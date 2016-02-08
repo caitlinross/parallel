@@ -187,7 +187,7 @@ void output_final_cell_state()
     for (i = 0; i < g_x_cell_size; i++)
     {
         char line[g_x_cell_size * 2 + 1];
-        sprintf(line, "");
+        line[0]=0;
         for (j = 0; j < g_y_cell_size; j++)
         {
             char tmp[4];
