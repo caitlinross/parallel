@@ -32,7 +32,7 @@ unsigned int g_y_cell_size=0;
 
 unsigned int g_num_ticks=0;
 
-double g_threshold=0.0;
+double g_thresh_hold=0.0;
 
 /***************************************************************************/
 /* Function Decs ***********************************************************/
@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
             exit(1);
         }
         if (atoi(argv[3]) >= 0)
-            g_threshold = atoi(argv[3])*.01;
+            g_thresh_hold = atoi(argv[3])*.01;
         else
         {
             perror("Threshold should be an integer greater than or equal to 0");
@@ -153,14 +153,14 @@ void compute_one_tick()
         for (j = 0; j < g_y_cell_size; j++)
         {
             double r = drand48();
-            if (r > g_threshold)
+            if (r > g_thresh_hold)
             {
                 // random number greater than given threshold
                 // use normal GOL rules
                 apply_gol_rules(i, j);
             }
             else // otherwise choose a random state
-                g_GOL_CELL[i][j] = (drand48() > .5) ? ALIVE : DEAD;
+                g_GOL_CELL[i][j] = (drand48() < .5) ? ALIVE : DEAD;
         }
     }
 }
@@ -175,7 +175,7 @@ void output_final_cell_state()
     // This data will be used to create your graphs
     FILE *f;
     char filename[64];
-    sprintf(filename, "gol-%d-%d-%d.out", g_x_cell_size, g_num_ticks, (int)(g_threshold*100));
+    sprintf(filename, "gol-%d-%d-%d.out", g_x_cell_size, g_num_ticks, (int)(g_thresh_hold*100));
     f = fopen(filename, "w");
     if (!f)
     {
