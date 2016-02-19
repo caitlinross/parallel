@@ -24,6 +24,9 @@
 #define ALIVE 1
 #define DEAD  0
 
+#define BEFORE_TAG 0
+#define AFTER_TAG 1
+
 /***************************************************************************/
 /* Global Vars *************************************************************/
 /***************************************************************************/
@@ -35,8 +38,8 @@ unsigned int g_y_cell_size=0;
 unsigned int g_num_ticks=0;
 double g_threshold=0.0;
 
-unsigned int **ghost_row_before = NULL;
-unsigned int **ghost_row_after = NULL;
+unsigned int *ghost_row_before = NULL;
+unsigned int *ghost_row_after = NULL;
 
 /***************************************************************************/
 /* Function Decs ***********************************************************/
@@ -44,10 +47,10 @@ unsigned int **ghost_row_after = NULL;
 
 // Bring over from your code
 void allocate_and_init_cells(int num_rows, int rank);
-void compute_one_tick(int num_rows, int rank);
+void compute_one_tick(int num_rows, int rank, int world_size);
 void output_final_cell_state(int num_rows, int rank);
-void apply_gol_rules(int i, int j);
-int count_alive_neighbors(int i, int j);
+void apply_gol_rules(int i, int j, int num_rows);
+int count_alive_neighbors(int i, int j, int num_rows);
 int mod (int a, int b);
 
 
@@ -66,7 +69,8 @@ int main(int argc, char *argv[])
     MPI_Init( &argc, &argv);
     MPI_Comm_size( MPI_COMM_WORLD, &mpi_commsize);
     MPI_Comm_rank( MPI_COMM_WORLD, &mpi_myrank);
-    start_time = MPI_Wtime();
+    if (mpi_myrank == 0)
+        start_time = MPI_Wtime();
     
 // Init 16,384 RNG streams - each rank has an independent stream
     InitDefault();
@@ -110,22 +114,23 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-
-
     // TODO need to make sure it works correctly when num rows not evenly divisible
     allocate_and_init_cells(g_y_cell_size / mpi_commsize, mpi_myrank);
 
     for(i = 0; i < g_num_ticks; i++)
     {
-        compute_one_tick(g_y_cell_size / mpi_commsize, mpi_myrank);
+        compute_one_tick(g_y_cell_size / mpi_commsize, mpi_myrank, mpi_commsize);
     }
 
     output_final_cell_state(g_y_cell_size / mpi_commsize, mpi_myrank);
 
 // END -Perform a barrier and then leave MPI
     MPI_Barrier( MPI_COMM_WORLD );
-    end_time = MPI_Wtime();
-    printf("Run time: %f seconds\n", end_time-start_time);
+    if (mpi_myrank == 0)
+    {
+        end_time = MPI_Wtime();
+        printf("Run time: %f seconds\n", end_time-start_time);
+    }
     MPI_Finalize();
     return 0;
 }
@@ -193,9 +198,32 @@ void allocate_and_init_cells(int num_rows, int rank)
 /* Function: compute_one_tick **********************************************/
 /***************************************************************************/
 
-void compute_one_tick(int num_rows, int rank)
+void compute_one_tick(int num_rows, int rank, int world_size)
 {
     // TODO need to add in mpi messaging for ghost rows 
+    // need to send/receive to rank++ and rank-- (handle end cases as well)
+    MPI_Request rb, sb, ra, sa;
+    MPI_Status status;
+    MPI_Irecv(ghost_row_before, g_x_cell_size, MPI_UNSIGNED, MPI_ANY_SOURCE, BEFORE_TAG,
+            MPI_COMM_WORLD, &rb);
+    MPI_Irecv(ghost_row_after, g_x_cell_size, MPI_UNSIGNED, MPI_ANY_SOURCE, AFTER_TAG,
+            MPI_COMM_WORLD, &ra);
+
+    // before sending, copy to temp buffer for non blocking sends  (TODO is this necessary?)
+    unsigned int *tmp_before = calloc(g_x_cell_size, sizeof(unsigned int));
+    unsigned int *tmp_after = calloc(g_x_cell_size, sizeof(unsigned int));
+    memcpy(tmp_before, g_GOL_CELL[0], sizeof(unsigned int)*g_x_cell_size);
+    memcpy(tmp_after, g_GOL_CELL[num_rows-1], sizeof(unsigned int)*g_x_cell_size);
+    MPI_Isend(tmp_before, g_x_cell_size, MPI_UNSIGNED, mod(rank-1, world_size), BEFORE_TAG, 
+           MPI_COMM_WORLD, &sb); 
+    MPI_Isend(tmp_after, g_x_cell_size, MPI_UNSIGNED, mod(rank+1, world_size), AFTER_TAG, 
+           MPI_COMM_WORLD, &sa); 
+
+    // need to wait to receive ghost rows
+    MPI_Wait(&rb, &status);
+    MPI_Wait(&ra, &status);
+
+    // update matrices
     int i, j;
     for (i = 0; i < num_rows; i++)
     {
@@ -206,12 +234,18 @@ void compute_one_tick(int num_rows, int rank)
             {
                 // random number greater than given threshold
                 // use normal GOL rules
-                apply_gol_rules(i, j);
+                apply_gol_rules(i, j, num_rows);
             }
             else // otherwise choose a random state
                 g_GOL_CELL[i][j] = (GenVal(rank * num_rows + i) < .5) ? ALIVE : DEAD;
         }
     }
+
+    // free buffers used for sending now
+    MPI_Wait(&sb, &status);
+    free(tmp_before);
+    MPI_Wait(&sa, &status);
+    free(tmp_after);
 }
 
 /***************************************************************************/
@@ -256,9 +290,9 @@ void output_final_cell_state(int num_rows, int rank)
 /***************************************************************************/
 
 /* apply the game of life rules to the cell in position (i,j) */
-void apply_gol_rules(int i, int j)
+void apply_gol_rules(int i, int j, int num_rows)
 {
-    int total_alive = count_alive_neighbors(i, j);
+    int total_alive = count_alive_neighbors(i, j, num_rows);
     if (g_GOL_CELL[i][j] == ALIVE)
     {
         if (total_alive < 2)
@@ -274,33 +308,81 @@ void apply_gol_rules(int i, int j)
 }
 
 /* count alive neighbors */
-int count_alive_neighbors(int i, int j)
+int count_alive_neighbors(int i, int j, int num_rows)
 {
     // TODO have to change to account for ghost rows
     int total_alive = 0;
-    int i_u = mod(i+1, (int)g_x_cell_size);
-    int i_d = mod(i-1, (int)g_x_cell_size);
-    int j_r = mod(j+1, (int)g_y_cell_size);
-    int j_l = mod(j-1, (int)g_y_cell_size);
-    // up, down, left, right neighbors
-    if (g_GOL_CELL[i_u][j] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i_d][j] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i][j_r] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i][j_l] == ALIVE)
-        total_alive++;
+    int i_u = mod(i+1, num_rows);
+    int i_d = mod(i-1, num_rows);
+    int j_r = mod(j+1, (int)g_x_cell_size);
+    int j_l = mod(j-1, (int)g_x_cell_size);
+    if (i == 0)
+    {
+        // up, down, left, right neighbors
+        if (g_GOL_CELL[i_u][j] == ALIVE)
+            total_alive++;
+        if (ghost_row_before[j] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i][j_r] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i][j_l] == ALIVE)
+            total_alive++;
 
-    // diagonal neighbors
-    if (g_GOL_CELL[i_u][j_l] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i_d][j_r] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i_u][j_r] == ALIVE)
-        total_alive++;
-    if (g_GOL_CELL[i_d][j_l] == ALIVE)
-        total_alive++;
+        // diagonal neighbors
+        if (g_GOL_CELL[i_u][j_l] == ALIVE)
+            total_alive++;
+        if (ghost_row_before[j_r] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i_u][j_r] == ALIVE)
+            total_alive++;
+        if (ghost_row_before[j_l] == ALIVE)
+            total_alive++;
+    }
+    else if (i == num_rows-1)
+    {
+        // up, down, left, right neighbors
+        if (ghost_row_after[j] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i_d][j] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i][j_r] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i][j_l] == ALIVE)
+            total_alive++;
+
+        // diagonal neighbors
+        if (ghost_row_after[j_l] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i_d][j_r] == ALIVE)
+            total_alive++;
+        if (ghost_row_after[j_r] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i_d][j_l] == ALIVE)
+            total_alive++;
+    }
+    else
+    {
+        // up, down, left, right neighbors
+        if (g_GOL_CELL[i_u][j] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i_d][j] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i][j_r] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i][j_l] == ALIVE)
+            total_alive++;
+
+        // diagonal neighbors
+        if (g_GOL_CELL[i_u][j_l] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i_d][j_r] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i_u][j_r] == ALIVE)
+            total_alive++;
+        if (g_GOL_CELL[i_d][j_l] == ALIVE)
+            total_alive++;
+    }
+
 
     return total_alive;
 }
