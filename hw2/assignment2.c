@@ -48,7 +48,7 @@ unsigned int *ghost_row_after = NULL;
 // Bring over from your code
 void allocate_and_init_cells(int num_rows, int rank);
 void compute_one_tick(int num_rows, int rank, int world_size);
-void output_final_cell_state(int num_rows, int rank);
+void output_final_cell_state(int num_rows, int rank, int world_size);
 void apply_gol_rules(int i, int j, int num_rows);
 int count_alive_neighbors(int i, int j, int num_rows);
 int mod (int a, int b);
@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
         compute_one_tick(g_y_cell_size / mpi_commsize, mpi_myrank, mpi_commsize);
     }
 
-    output_final_cell_state(g_y_cell_size / mpi_commsize, mpi_myrank);
+    output_final_cell_state(g_y_cell_size / mpi_commsize, mpi_myrank, mpi_commsize);
 
 // END -Perform a barrier and then leave MPI
     MPI_Barrier( MPI_COMM_WORLD );
@@ -252,13 +252,13 @@ void compute_one_tick(int num_rows, int rank, int world_size)
 /* Function: output_final_cell_state ***************************************/
 /***************************************************************************/
 
-void output_final_cell_state(int num_rows, int rank)
+void output_final_cell_state(int num_rows, int rank, int world_size)
 {
     // print out in grid form 16 value per row of the g_GOL_CELL
     // This data will be used to create your graphs
     FILE *f;
     char filename[64];
-    sprintf(filename, "gol-%d-%d-%d-rank%d.out", g_x_cell_size, g_num_ticks, (int)(g_threshold*100), rank);
+    sprintf(filename, "gol-%d-%d-%d-%d-rank%d.out", g_x_cell_size, g_num_ticks, (int)(g_threshold*100), world_size, rank);
     f = fopen(filename, "w");
     if (!f)
     {
@@ -280,7 +280,7 @@ void output_final_cell_state(int num_rows, int rank)
 
         }
         fprintf(f, "%s\n", line);
-        printf("%s\n", line);
+        //printf("%s\n", line);
     }
     fclose(f);
 }
