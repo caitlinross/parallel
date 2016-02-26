@@ -114,7 +114,6 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    // TODO need to make sure it works correctly when num rows not evenly divisible
     allocate_and_init_cells(g_y_cell_size / mpi_commsize, mpi_myrank);
 
     for(i = 0; i < g_num_ticks; i++)
@@ -166,7 +165,7 @@ void allocate_and_init_cells(int num_rows, int rank)
 
         for (j = 0; j < g_x_cell_size; j++)
         {
-            // TODO check that this is correct generator number
+            // use a different RNG seed per row (based on absolute row number)
             double r = GenVal(rank * num_rows + i);
             if (r < .5)
                 g_GOL_CELL[i][j] = ALIVE;
@@ -200,7 +199,6 @@ void allocate_and_init_cells(int num_rows, int rank)
 
 void compute_one_tick(int num_rows, int rank, int world_size)
 {
-    // TODO need to add in mpi messaging for ghost rows 
     // need to send/receive to rank++ and rank-- (handle end cases as well)
     MPI_Request rb, sb, ra, sa;
     MPI_Status status;
@@ -209,24 +207,25 @@ void compute_one_tick(int num_rows, int rank, int world_size)
     MPI_Irecv(ghost_row_after, g_x_cell_size, MPI_UNSIGNED, MPI_ANY_SOURCE, AFTER_TAG,
             MPI_COMM_WORLD, &ra);
 
-    // before sending, copy to temp buffer for non blocking sends  (TODO is this necessary?)
-    unsigned int *tmp_before = calloc(g_x_cell_size, sizeof(unsigned int));
-    unsigned int *tmp_after = calloc(g_x_cell_size, sizeof(unsigned int));
-    memcpy(tmp_before, g_GOL_CELL[0], sizeof(unsigned int)*g_x_cell_size);
-    memcpy(tmp_after, g_GOL_CELL[num_rows-1], sizeof(unsigned int)*g_x_cell_size);
-    MPI_Isend(tmp_before, g_x_cell_size, MPI_UNSIGNED, mod(rank-1, world_size), BEFORE_TAG, 
+    // before sending, copy to temp buffer for non blocking sends  
+    unsigned int tmp_before[g_x_cell_size];
+    unsigned int tmp_after[g_x_cell_size];
+    memcpy(&tmp_before, g_GOL_CELL[0], sizeof(unsigned int)*g_x_cell_size);
+    memcpy(&tmp_after, g_GOL_CELL[num_rows-1], sizeof(unsigned int)*g_x_cell_size);
+    MPI_Isend(&tmp_before, g_x_cell_size, MPI_UNSIGNED, mod(rank-1, world_size), BEFORE_TAG, 
            MPI_COMM_WORLD, &sb); 
-    MPI_Isend(tmp_after, g_x_cell_size, MPI_UNSIGNED, mod(rank+1, world_size), AFTER_TAG, 
+    MPI_Isend(&tmp_after, g_x_cell_size, MPI_UNSIGNED, mod(rank+1, world_size), AFTER_TAG, 
            MPI_COMM_WORLD, &sa); 
 
-    // need to wait to receive ghost rows
+    // need to wait to receive 1st ghost row
     MPI_Wait(&rb, &status);
-    MPI_Wait(&ra, &status);
 
     // update matrices
     int i, j;
     for (i = 0; i < num_rows; i++)
     {
+        if (i == num_rows-1) // make sure we have final ghost row
+            MPI_Wait(&ra, &status);
         for (j = 0; j < g_x_cell_size; j++)
         {
             double r = GenVal(rank * num_rows + i);
@@ -240,12 +239,6 @@ void compute_one_tick(int num_rows, int rank, int world_size)
                 g_GOL_CELL[i][j] = (GenVal(rank * num_rows + i) < .5) ? ALIVE : DEAD;
         }
     }
-
-    // free buffers used for sending now
-    MPI_Wait(&sb, &status);
-    free(tmp_before);
-    MPI_Wait(&sa, &status);
-    free(tmp_after);
 }
 
 /***************************************************************************/
@@ -280,7 +273,6 @@ void output_final_cell_state(int num_rows, int rank, int world_size)
 
         }
         fprintf(f, "%s\n", line);
-        //printf("%s\n", line);
     }
     fclose(f);
 }
@@ -310,7 +302,6 @@ void apply_gol_rules(int i, int j, int num_rows)
 /* count alive neighbors */
 int count_alive_neighbors(int i, int j, int num_rows)
 {
-    // TODO have to change to account for ghost rows
     int total_alive = 0;
     int i_u = mod(i+1, num_rows);
     int i_d = mod(i-1, num_rows);
