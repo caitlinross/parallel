@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
         compute_one_tick(g_y_cell_size / mpi_commsize, mpi_myrank, mpi_commsize);
     }
 
-    output_final_cell_state(g_y_cell_size / mpi_commsize, mpi_myrank, mpi_commsize);
+    //output_final_cell_state(g_y_cell_size / mpi_commsize, mpi_myrank, mpi_commsize);
 
 // END -Perform a barrier and then leave MPI
     MPI_Barrier( MPI_COMM_WORLD );
@@ -212,9 +212,9 @@ void compute_one_tick(int num_rows, int rank, int world_size)
     unsigned int tmp_after[g_x_cell_size];
     memcpy(&tmp_before, g_GOL_CELL[0], sizeof(unsigned int)*g_x_cell_size);
     memcpy(&tmp_after, g_GOL_CELL[num_rows-1], sizeof(unsigned int)*g_x_cell_size);
-    MPI_Isend(&tmp_before, g_x_cell_size, MPI_UNSIGNED, mod(rank-1, world_size), BEFORE_TAG, 
+    MPI_Isend(tmp_before, g_x_cell_size, MPI_UNSIGNED, mod(rank-1, world_size), BEFORE_TAG, 
            MPI_COMM_WORLD, &sb); 
-    MPI_Isend(&tmp_after, g_x_cell_size, MPI_UNSIGNED, mod(rank+1, world_size), AFTER_TAG, 
+    MPI_Isend(tmp_after, g_x_cell_size, MPI_UNSIGNED, mod(rank+1, world_size), AFTER_TAG, 
            MPI_COMM_WORLD, &sa); 
 
     // need to wait to receive 1st ghost row
